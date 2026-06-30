@@ -1,0 +1,88 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        skipDefaultCheckout(true)
+    }
+
+    parameters {
+        gitParameter(
+            name: 'GIT_BRANCH',
+            type: 'PT_BRANCH',
+            defaultValue: 'master',
+            quickFilterEnabled: true,
+            description: 'Выбор ветки из GitHub',
+            branchFilter: 'origin/(.*)',
+            tagFilter: '*',
+            sortMode: 'ASCENDING_SMART',
+            selectedValue: 'DEFAULT',
+            useRepository: 'git@github.com:veqveq/wb-integrations.git'
+        )
+    }
+
+    stages {
+
+        stage('Set Git branch') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.GIT_BRANCH}"]],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github',
+                        url: 'git@github.com:veqveq/wb-integrations.git'
+                    ]]
+                ])
+                sh 'chmod +x .deploy/scripts/*.sh'
+            }
+        }
+
+        stage('Check unnecessary frameworks') {
+            steps {
+                sshagent(['wirenboard']) {
+                    sh './.deploy/scripts/check_frameworks.sh'
+                }
+            }
+        }
+
+        stage('Build info') {
+            steps {
+                echo "Branch: ${params.GIT_BRANCH}"
+                echo "Build : ${env.BUILD_NUMBER}"
+                echo "Commit will be checked out from GitHub"
+            }
+        }
+
+        stage('Prepare remote') {
+            steps {
+                sshagent(['wirenboard']) {
+                    sh './.deploy/scripts/prepare_remote.sh'
+                }
+            }
+        }
+
+        stage('Deploy code') {
+            steps {
+                sshagent(['wirenboard']) {
+                    sh './.deploy/scripts/deploy.sh'
+                }
+            }
+        }
+
+        stage('Create virtual environment') {
+            steps {
+                sshagent(['wirenboard']) {
+                    sh './.deploy/scripts/create_env.sh'
+                }
+            }
+        }
+
+        stage('Deploy systemd') {
+            steps {
+                sshagent(['wirenboard']) {
+                    sh './.deploy/scripts/deploy_systemd.sh'
+                }
+            }
+        }
+    }
+}

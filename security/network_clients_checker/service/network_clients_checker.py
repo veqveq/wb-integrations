@@ -1,21 +1,20 @@
 import time
 
-from common.config_loader import load_config_json
+from common.config import load_config_json, get_service_and_config_paths
 from common.logger import configure_logger
-from common.utils import BASE_PATH
 from keenetic.dto.dto import ClientStatus
 from keenetic.service.keenetic_router import KeeneticRouter, NetworkClient
 from mqtt.service.mqtt import MQTTPublisher
 from security.network_clients_checker.dto.dto import ClientConnectionInfo, ClientCheckerConfig, UnregisteredClientInfo
 from security.network_clients_checker.utils.utils import get_client_status
 
-PATH = BASE_PATH / "security/network_clients_checker"
-LOG_PATH = PATH / "logs"
-CONFIG_PATH = PATH / "config"
+SERVICE_PATH, CONFIG_PATH = get_service_and_config_paths("security/network_clients_checker")
+
+LOG_PATH = SERVICE_PATH / "logs"
 SETTINGS_FILE = CONFIG_PATH / "settings.json"
 TRUSTED_CLIENTS_FILE = CONFIG_PATH / "trusted_network_clients.json"
 
-LOGGER = configure_logger("NETWORK_CLIENTS", LOG_PATH)
+LOGGER = configure_logger("logs", LOG_PATH)
 
 
 class NetworkClientsChecker:
