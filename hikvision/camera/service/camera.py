@@ -3,14 +3,15 @@ from typing import AsyncIterator
 import xmltodict
 from httpx import AsyncClient, DigestAuth, Response
 
-from common.config_loader import load_config_json
+from common.config import get_service_and_config_paths
+from common.config import load_config_json
 from common.logger import configure_logger
-from common.utils import BASE_PATH, JsonDict
+from common.utils import JsonDict
 from hikvision.camera.dto.dto import HikvisionCameraConfig, HikvisionCameraAlert
 
-PATH = BASE_PATH / "hikvision/camera"
-LOG_PATH = PATH / "logs"
-ENDPOINTS_FILE = PATH / "config/endpoints.json"
+SERVICE_PATH, CONFIG_PATH = get_service_and_config_paths("hikvision/camera")
+LOG_PATH = SERVICE_PATH / "logs"
+ENDPOINTS_FILE = CONFIG_PATH / "endpoints.json"
 
 
 class HikvisionCamera:
