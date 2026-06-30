@@ -2,16 +2,17 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-from common.config_loader import load_config_json
+from common.config import get_service_and_config_paths
+from common.config import load_config_json
 from common.logger import configure_logger
-from common.utils import BASE_PATH
 from mqtt.dto.dto import MQTTConfig
 
-PATH = BASE_PATH / "mqtt"
-LOG_PATH = PATH / "logs"
-SETTINGS_FILE = PATH / "config/settings.json"
+SERVICE_PATH, CONFIG_PATH = get_service_and_config_paths("mqtt")
 
-LOGGER = configure_logger("MQTT", LOG_PATH)
+LOG_PATH = SERVICE_PATH / "logs"
+SETTINGS_FILE = CONFIG_PATH / "settings.json"
+
+LOGGER = configure_logger("logs", LOG_PATH)
 
 
 class MQTTPublisher:
