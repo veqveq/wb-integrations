@@ -1,0 +1,22 @@
+[project]
+name = "wb-integrations"
+version = "1.0.0"
+description = "Кастомные интеграции УД"
+authors = [
+    {name = "veqveq",email = "vasyakov94@gmail.com"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "requests (>=2.34.2,<3.0.0)",
+    "paho-mqtt (>=2.1.0,<3.0.0)",
+    "xmltodict (>=1.0.4,<2.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false

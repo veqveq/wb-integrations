@@ -1,0 +1,5 @@
+/.idea/
+/.venv/
+/.deploy/backup/
+/.deploy/jenkins_home/
+/**/logs/
