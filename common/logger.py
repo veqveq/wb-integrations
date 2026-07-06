@@ -1,14 +1,18 @@
 import logging
 import sys
-
-from pathlib import Path
 from logging import Logger
+from pathlib import Path
 
 
 def configure_logger(name: str, log_path: Path) -> Logger:
     log_path.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+
+    if logger.hasHandlers():
+        return logger
+
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | [%(name)s] %(message)s"
     )
@@ -20,7 +24,6 @@ def configure_logger(name: str, log_path: Path) -> Logger:
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
 
-    logger.setLevel(logging.INFO)
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
     return logger
