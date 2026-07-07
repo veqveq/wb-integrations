@@ -1,10 +1,8 @@
-from typing import Any
-
-from common.utils import JsonDict
-from mqtt.dto.dto import MQTTDeviceConfig
 from datetime import datetime
 
+from common.utils import JsonDict
 from keenetic.dto.dto import NetworkClient, ClientStatus
+from mqtt.dto.dto import MQTTDeviceConfig
 from security.network_clients_checker.utils.utils import get_client_status
 
 
@@ -15,20 +13,23 @@ class ClientCheckerConfig:
 
 
 class ClientConnectionInfo:
-    def __init__(self,
-                 client: NetworkClient,
-                 status: ClientStatus = None,
-                 last_change_status_ts: datetime = datetime.now()
-                 ):
+    def __init__(self, client: NetworkClient, status: ClientStatus = None):
         self.client = client
         self.status = status if status is not None else get_client_status(client)
-        self.last_change_status_ts = last_change_status_ts
 
     def __str__(self):
         return (f'ClientConnectionInfo('
                 f'client={self.client}, '
                 f'status={self.status}'
                 f')')
+
+    def __eq__(self, __value):
+        if not __value or not isinstance(__value, ClientConnectionInfo):
+            return False
+        return self.client.__eq__(__value.client)
+
+    def __hash__(self):
+        return hash(self.client)
 
 
 class UnregisteredClientInfo:
@@ -48,3 +49,13 @@ class UnregisteredClientInfo:
                 f')')
 
 
+class ClientsCheckerLastState:
+    def __init__(
+            self,
+            online: set[ClientConnectionInfo] = None,
+            trusted_online: set[ClientConnectionInfo] = None,
+            unregistered_online: set[ClientConnectionInfo] = None,
+    ):
+        self.online = online if online else set()
+        self.trusted_online = trusted_online if online else set()
+        self.unregistered_online = unregistered_online if unregistered_online else set()
