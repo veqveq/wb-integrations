@@ -33,3 +33,11 @@ class NetworkClient:
                 f"active={self.active}"
                 f")"
                 )
+
+    def __eq__(self, __value):
+        if not __value or not isinstance(__value, NetworkClient):
+            return False
+        return self.mac == __value.mac
+
+    def __hash__(self):
+        return hash((self.mac, self.name))

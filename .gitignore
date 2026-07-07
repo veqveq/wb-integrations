@@ -3,3 +3,4 @@
 /.deploy/backup/
 /.deploy/jenkins_home/
 /**/logs/
+.env
