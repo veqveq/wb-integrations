@@ -1,5 +1,5 @@
 from common.utils import JsonDict
-from mqtt.dto.dto import MQTTDeviceConfig
+from common.wirenboard import WbDeviceMeta
 
 
 class HikvisionCameraConfig:
@@ -15,7 +15,7 @@ class HikvisionCameraConfig:
         self.host = json.get("host")
         self.username = json.get("username")
         self.password = json.get("password")
-        self.mqtt = MQTTDeviceConfig(json.get("mqtt"))
+        self.meta = WbDeviceMeta(json.get("meta"))
 
 
 class HikvisionCameraAlert:

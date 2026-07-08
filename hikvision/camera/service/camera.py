@@ -20,8 +20,8 @@ class HikvisionCamera:
         endpoints: JsonDict = load_config_json(ENDPOINTS_FILE)
         self.endpoints = {k: f"http://{config.host}{v}" for k, v in endpoints.items()}
         self.session: AsyncClient = AsyncClient(auth=DigestAuth(config.username, config.password), timeout=60)
-        self.logger = configure_logger(config.mqtt.device_name, LOG_PATH)
-        self.mqtt = config.mqtt
+        self.logger = configure_logger(config.meta.deviceName, LOG_PATH)
+        self.meta = config.meta
 
     async def listen_events_stream(self):
         async with self.session.stream("GET", self.endpoints["getEventsStream"]) as connection:

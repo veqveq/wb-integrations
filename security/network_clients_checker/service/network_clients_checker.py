@@ -22,10 +22,13 @@ LOGGER = configure_logger("logs", LOG_PATH)
 
 class NetworkClientsChecker:
     def __init__(self):
-        self.settings = ClientCheckerConfig(load_config_json(SETTINGS_FILE))
+        settings = ClientCheckerConfig(load_config_json(SETTINGS_FILE))
+        self.pool_interval = settings.pool_interval
+        self.meta = settings.meta
         self.trusted_clients = load_config_json(TRUSTED_CLIENTS_FILE)
         self.last_state = ClientsCheckerLastState()
         self.mqtt_publisher = MQTTPublisher()
+        self.mqtt_publisher.publish_meta(self.meta)
         self._send_status(1)
 
     def close(self):
@@ -33,14 +36,12 @@ class NetworkClientsChecker:
         self.mqtt_publisher.disconnect()
 
     def _send_status(self, status: int):
-        self.mqtt_publisher.publish(
-            self.settings.mqtt.device_name,
-            self.settings.mqtt.controls["status"],
-            status
-        )
+        self.mqtt_publisher.safe_publish(self.meta, "status", status)
 
     def get_client_connection_info(self, network_client: NetworkClient) -> ClientConnectionInfo:
-        client_last_state_list = [last for last in self.last_state.online if last.client.mac == network_client.mac]
+        client_last_state_list = ([last for last in self.last_state.online if last.client.mac == network_client.mac]
+                                  if self.last_state.online
+                                  else None)
         if not client_last_state_list:
             return ClientConnectionInfo(network_client)
         client_last_state = client_last_state_list[0]
@@ -54,12 +55,13 @@ class NetworkClientsChecker:
         online_clients_info: set[ClientConnectionInfo] = set(
             [info for info in network_clients if info and info.status != ClientStatus.OFFLINE]
         )
+        if self.last_state.online is None:
+            self.mqtt_publisher.safe_publish(self.meta, "clientsOnlineCount", str(len(online_clients_info)))
+            self.last_state.online = online_clients_info
+            return online_clients_info
+
         if len(self.last_state.online) != len(online_clients_info):
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["clientsOnlineCount"],
-                len(online_clients_info)
-            )
+            self.mqtt_publisher.safe_publish(self.meta, "clientsOnlineCount", str(len(online_clients_info)))
 
         if online_clients_info != self.last_state.online:
             connected = online_clients_info - self.last_state.online
@@ -90,6 +92,15 @@ class NetworkClientsChecker:
             else set()
         )
 
+        if self.last_state.trusted_online is None:
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "trustedClientsOnline",
+                ",".join([info.client.name for info in trusted_online]) if len(trusted_online) > 0 else " "
+            )
+            self.last_state.trusted_online = trusted_online
+            return
+
         if trusted_online != self.last_state.trusted_online:
             connected = trusted_online - self.last_state.trusted_online
             disconnected = self.last_state.trusted_online - trusted_online
@@ -100,10 +111,10 @@ class NetworkClientsChecker:
                 f"Trusted clients disconnected: {[info.client.name for info in disconnected]}"
             ) if disconnected else None
 
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["trustedClientsOnline"],
-                str([info.client.name for info in trusted_online])
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "trustedClientsOnline",
+                ",".join([info.client.name for info in trusted_online]) if len(trusted_online) > 0 else " "
             )
 
         self.last_state.trusted_online = trusted_online
@@ -115,16 +126,25 @@ class NetworkClientsChecker:
                and info.client.registered is False
         ])
 
+        if self.last_state.unregistered_online is None:
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "unregisteredClientsOnline",
+                ",".join([info.client.name for info in unregistered_online]) if len(unregistered_online) > 0 else " "
+            )
+            self.last_state.unregistered_online = unregistered_online
+            return
+
         if unregistered_online != self.last_state.unregistered_online:
             connected = unregistered_online - self.last_state.unregistered_online
             disconnected = self.last_state.unregistered_online - unregistered_online
             LOGGER.info(f"New clients connected: {[info.client.name for info in connected]}") if connected else None
             LOGGER.info(
                 f"Clients disconnected: {[info.client.name for info in disconnected]}") if disconnected else None
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["unregisteredClientsOnline"],
-                str([info.client.name for info in unregistered_online])
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "unregisteredClientsOnline",
+                ",".join([info.client.name for info in unregistered_online]) if len(unregistered_online) > 0 else ""
             )
         self.last_state.unregistered_online = unregistered_online
 
@@ -136,7 +156,7 @@ if __name__ == '__main__':
     try:
         router = KeeneticRouter()
         clients_checker = NetworkClientsChecker()
-        pool_interval = clients_checker.settings.pool_interval
+        pool_interval = clients_checker.pool_interval
         LOGGER.info("Get started")
 
         while True:

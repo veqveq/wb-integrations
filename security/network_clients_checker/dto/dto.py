@@ -1,15 +1,15 @@
 from datetime import datetime
 
 from common.utils import JsonDict
+from common.wirenboard import WbDeviceMeta
 from keenetic.dto.dto import NetworkClient, ClientStatus
-from mqtt.dto.dto import MQTTDeviceConfig
 from security.network_clients_checker.utils.utils import get_client_status
 
 
 class ClientCheckerConfig:
     def __init__(self, json: JsonDict):
         self.pool_interval = json.get("poolInterval", 15)
-        self.mqtt = MQTTDeviceConfig(json.get("mqtt"))
+        self.meta = WbDeviceMeta(json.get("meta"))
 
 
 class ClientConnectionInfo:
@@ -56,6 +56,6 @@ class ClientsCheckerLastState:
             trusted_online: set[ClientConnectionInfo] = None,
             unregistered_online: set[ClientConnectionInfo] = None,
     ):
-        self.online = online if online else set()
-        self.trusted_online = trusted_online if online else set()
-        self.unregistered_online = unregistered_online if unregistered_online else set()
+        self.online = online
+        self.trusted_online = trusted_online
+        self.unregistered_online = unregistered_online
