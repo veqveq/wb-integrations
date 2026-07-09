@@ -26,8 +26,7 @@ class CameraAlarmEvent:
 
 class CameraAlarmSettings:
     def __init__(self, json: JsonDict):
-        self.reconnected_delay_sec = json.get("reconnectDelaySec", 5)
-        self.connection_control = json.get("connectionControl")
-        self.events = {CameraAlarmEventType.from_string(event["name"]): CameraAlarmEvent(event)
-                       for event in json.get("events")
-                       }
+        self.reconnected_delay_sec: int = json.get("reconnectDelaySec", 5)
+        self.events: dict[CameraAlarmEventType, CameraAlarmEvent] = {
+            CameraAlarmEventType.from_string(event["name"]): CameraAlarmEvent(event) for event in json.get("events")
+        }

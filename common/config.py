@@ -4,9 +4,9 @@ from pathlib import Path
 
 from common.utils import JsonDict
 
-BASE_PATH = Path(os.getenv("PROJECT_BASE_PATH"))
+BASE_PATH: Path = Path(os.getenv("PROJECT_BASE_PATH"))
 
-CONFIG_BASE_PATH = Path(os.getenv("CONFIG_DIR"))
+CONFIG_BASE_PATH: Path = Path(os.getenv("CONFIG_DIR"))
 
 
 def get_service_path(service_path: str) -> Path:

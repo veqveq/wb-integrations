@@ -11,20 +11,19 @@ class HikvisionCameraConfig:
         return f"Камера {HikvisionCameraConfig.UNKNOWN_CAMERA_COUNTER}"
 
     def __init__(self, json: JsonDict):
-        self.name = json.get("name", HikvisionCameraConfig.get_unknown_camera_name())
-        self.host = json.get("host")
-        self.username = json.get("username")
-        self.password = json.get("password")
-        self.meta = WbDeviceMeta(json.get("meta"))
+        self.name: str = json.get("name", HikvisionCameraConfig.get_unknown_camera_name())
+        self.host: str = json["host"]
+        self.username: str = json["username"]
+        self.password: str = json["password"]
+        self.meta: WbDeviceMeta = WbDeviceMeta(json.get("meta", JsonDict()))
 
 
-class HikvisionCameraAlert:
+class HikvisionCameraEvent:
     def __init__(self, json: JsonDict):
-        event_data = json.get("EventNotificationAlert", json)
-        self.timestamp = event_data.get("dateTime")
-        self.type = event_data.get("eventType")
-        self.state = event_data.get("eventState")
-        self.description = event_data.get("description", None)
+        event_data: JsonDict = json.get("EventNotificationAlert", json)
+
+        self.type: str = event_data.get("eventType")
+        self.state: str = event_data.get("eventState")
 
     def get_state_to_int(self) -> int | None:
         if self.state != "active" and self.state != "inactive":
@@ -34,7 +33,5 @@ class HikvisionCameraAlert:
     def __str__(self):
         return (f'CameraEvent('
                 f'type={self.type}, '
-                f'state={self.state}, '
-                f'description={self.description}, '
-                f'timestamp={self.timestamp}'
+                f'state={self.state}'
                 f')')

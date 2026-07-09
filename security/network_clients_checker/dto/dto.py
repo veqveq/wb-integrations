@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from common.utils import JsonDict
 from common.wirenboard import WbDeviceMeta
 from keenetic.dto.dto import NetworkClient, ClientStatus
@@ -8,14 +6,14 @@ from security.network_clients_checker.utils.utils import get_client_status
 
 class ClientCheckerConfig:
     def __init__(self, json: JsonDict):
-        self.pool_interval = json.get("poolInterval", 15)
-        self.meta = WbDeviceMeta(json.get("meta"))
+        self.pool_interval: int = json.get("poolInterval", 15)
+        self.meta: WbDeviceMeta = WbDeviceMeta(json.get("meta"))
 
 
 class ClientConnectionInfo:
     def __init__(self, client: NetworkClient, status: ClientStatus = None):
-        self.client = client
-        self.status = status if status is not None else get_client_status(client)
+        self.client: NetworkClient = client
+        self.status: ClientStatus = status if status is not None else get_client_status(client)
 
     def __str__(self):
         return (f'ClientConnectionInfo('
@@ -32,23 +30,6 @@ class ClientConnectionInfo:
         return hash(self.client)
 
 
-class UnregisteredClientInfo:
-    def __init__(self, client: NetworkClient):
-        if client.registered is True:
-            raise AttributeError(f'Client: {client} is registered!')
-        self.name = client.name
-        self.mac = client.mac
-        self.ip = client.address
-        self.timestamp = datetime.now()
-
-    def __str__(self):
-        return (f'UnregisteredClientInfo('
-                f'name={self.name}, '
-                f'mac={self.mac}, '
-                f'ip={self.ip}'
-                f')')
-
-
 class ClientsCheckerLastState:
     def __init__(
             self,
@@ -56,6 +37,6 @@ class ClientsCheckerLastState:
             trusted_online: set[ClientConnectionInfo] = None,
             unregistered_online: set[ClientConnectionInfo] = None,
     ):
-        self.online = online
-        self.trusted_online = trusted_online
-        self.unregistered_online = unregistered_online
+        self.online: set[ClientConnectionInfo] = online
+        self.trusted_online: set[ClientConnectionInfo] = trusted_online
+        self.unregistered_online: set[ClientConnectionInfo] = unregistered_online
