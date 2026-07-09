@@ -28,12 +28,13 @@ class HikvisionCameraAlarmService:
         self.event_states = {event.value: False for event in self.handled_events.keys()}
         self.vmd_counter = 0
         self.vmd_timer: asyncio.Task | None = None
+        self.mqtt.publish_meta(self.camera.meta)
 
     async def handle_alarm_events(self):
         try:
             while True:
                 try:
-                    self.mqtt.publish(self.camera.mqtt.device_name, self.connection_control, 1)
+                    self.mqtt.safe_publish(self.camera.meta, "streamConnected", 1)
                     LOGGER.info(f'Camera "{self.camera.name}". Listen alarm events started...')
                     async for event in self.camera.listen_events_stream():
                         event_type = CameraAlarmEventType.from_string(event.type)
@@ -43,7 +44,7 @@ class HikvisionCameraAlarmService:
                 except Exception:
                     LOGGER.error(f'Camera "{self.camera.name}". Handle alarm event error', exc_info=True)
                 finally:
-                    self.mqtt.publish(self.camera.mqtt.device_name, self.connection_control, 0)
+                    self.mqtt.safe_publish(self.camera.meta, "streamConnected", 0)
                     LOGGER.info(
                         f'Camera "{self.camera.name}". Listen alarm events stopped. '
                         f'Reconnect after {self.reconnected_delay} sec'
@@ -73,8 +74,8 @@ class HikvisionCameraAlarmService:
             return
         if self.vmd_counter >= self.handled_events[CameraAlarmEventType.VMD].params["requiredActiveCount"]:
             self.event_states[event.type] = event.get_state_to_int() == 1
-            self.mqtt.publish(
-                self.camera.mqtt.device_name,
+            self.mqtt.safe_publish(
+                self.camera.meta,
                 self.handled_events.get(CameraAlarmEventType.VMD).control,
                 1
             )
@@ -85,8 +86,8 @@ class HikvisionCameraAlarmService:
         if event.state == current_state:
             return
         self.event_states[event.type] = event.get_state_to_int() == 1
-        self.mqtt.publish(
-            self.camera.mqtt.device_name,
+        self.mqtt.safe_publish(
+            self.camera.meta,
             self.handled_events.get(CameraAlarmEventType.from_string(event.type)).control,
             event.get_state_to_int()
         )
@@ -99,8 +100,8 @@ class HikvisionCameraAlarmService:
     async def _inactive_vmd_timeout(self):
         await asyncio.sleep(self.handled_events[CameraAlarmEventType.VMD].params.get("activeExpirationSec", 2))
         self.vmd_counter = 0
-        self.mqtt.publish(
-            self.camera.mqtt.device_name,
+        self.mqtt.safe_publish(
+            self.camera.meta,
             self.handled_events.get(CameraAlarmEventType.VMD).control,
             0
         )
