@@ -1,11 +1,10 @@
 from typing import Any
 
-import paho.mqtt.client as mqtt
+from paho.mqtt.client import Client
 
 from common.config import get_service_and_config_paths
 from common.config import load_config_json
 from common.logger import configure_logger
-from common.utils import JsonDict
 from common.wirenboard import WbDeviceMeta, WbDeviceControlMeta
 from mqtt.dto.dto import MQTTConfig
 
@@ -29,7 +28,8 @@ class MQTTPublisher:
     def __init__(self):
         try:
             config: MQTTConfig = MQTTConfig(load_config_json(SETTINGS_FILE))
-            self.client = mqtt.Client(client_id=config.client_id)
+
+            self.client: Client = Client(client_id=config.client_id)
             self.client.connect(config.host, config.port, keepalive=60)
             self.client.loop_start()
             LOGGER.info("MQTT connected")
@@ -46,12 +46,12 @@ class MQTTPublisher:
     def publish_meta(self, meta: WbDeviceMeta):
         if not meta:
             return
-        device_name = meta.deviceName
+        device_name: str = meta.deviceName
         if not device_name:
             AttributeError(f"Publish meta error. Device name required: {meta}")
         self._send_device_meta(meta)
 
-        for control_name, control_meta in meta.controls:
+        for control_name, control_meta in meta.controls.items():
             if not control_name:
                 AttributeError(f"Publish meta error. Device: {device_name}. Control name required: {control_meta}")
             self._send_control_meta(device_name, control_name, control_meta)
@@ -62,7 +62,7 @@ class MQTTPublisher:
         LOGGER.info("MQTT disconnected")
 
     def _unsafe_publish(self, device: str, control: str, value: Any, retain: bool = True) -> None:
-        topic = f"/devices/{device}/controls/{control}"
+        topic: str = f"/devices/{device}/controls/{control}"
         self._send_message(topic, value, retain)
 
     def _send_message(self, topic: str, message: Any, retain: bool = True):
@@ -74,10 +74,10 @@ class MQTTPublisher:
 
     def _send_device_meta(self, device_meta: WbDeviceMeta):
         for field_name, field_value in device_meta.get_meta().items():
-            topic = f"/devices/{device_meta.deviceName}/meta/{field_name}"
+            topic: str = f"/devices/{device_meta.deviceName}/meta/{field_name}"
             self._send_message(topic, field_value)
 
     def _send_control_meta(self, device_name: str, control_name: str, control_meta: WbDeviceControlMeta):
         for field_name, field_value in control_meta.get_meta().items():
-            topic = f"/devices/{device_name}/controls/{control_name}/meta/{field_name}"
+            topic: str = f"/devices/{device_name}/controls/{control_name}/meta/{field_name}"
             self._send_message(topic, field_value)

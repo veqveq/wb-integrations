@@ -18,11 +18,11 @@ class ClientStatus(Enum):
 
 class NetworkClient:
     def __init__(self, json: JsonDict):
-        self.name = json.get("name")
-        self.mac = json.get("mac")
-        self.address = json.get("ip")
-        self.registered = json.get("registered")
-        self.active = json.get("active")
+        self.mac = json["mac"]
+        self.name: str = json.get("name")
+        self.address: str = json.get("ip")
+        self.registered: bool = json.get("registered")
+        self.active: bool = json.get("active")
 
     def __str__(self):
         return (f"NetworkClient("
