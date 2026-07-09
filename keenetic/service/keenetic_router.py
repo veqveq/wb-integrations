@@ -1,4 +1,4 @@
-import requests
+from requests import Session, Response
 
 from common.config import get_service_and_config_paths
 from common.config import load_config_json
@@ -19,17 +19,18 @@ class KeeneticRouter:
     def __init__(self):
         config: KeeneticRouterConfig = KeeneticRouterConfig(load_config_json(SETTINGS_FILE))
         endpoints: JsonDict = load_config_json(ENDPOINTS_FILE)
-        self.endpoints = {k: f"https://{config.host}{v}" for k, v in endpoints.items()}
-        self.session = requests.Session()
+        self.endpoints: dict[str, str] = {k: f"https://{config.host}{v}" for k, v in endpoints.items()}
+        self.session: Session = Session()
         self.session.auth = (config.username, config.password)
         self.session.headers.update({"Accept": "application/json"})
 
     def get_clients(self) -> list[NetworkClient]:
         try:
-            response = self.session.get(f"{self.endpoints.get("getClients")}", timeout=10)
+            response: Response = self.session.get(f"{self.endpoints.get("getClients")}", timeout=10)
             response.raise_for_status()
             LOGGER.debug(f"GET CLIENTS: {response.json()}")
-            host = response.json().get("host", [])
+
+            host: list[JsonDict] = response.json().get("host", [])
             return [NetworkClient(client) for client in host]
         except Exception:
             LOGGER.error("GET CLIENTS error", exc_info=True)

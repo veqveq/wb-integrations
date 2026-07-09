@@ -2,6 +2,8 @@ import time
 
 from common.config import load_config_json, get_service_and_config_paths
 from common.logger import configure_logger
+from common.utils import JsonDict
+from common.wirenboard import WbDeviceMeta
 from keenetic.dto.dto import ClientStatus
 from keenetic.service.keenetic_router import KeeneticRouter, NetworkClient
 from mqtt.service.mqtt import MQTTPublisher
@@ -22,10 +24,16 @@ LOGGER = configure_logger("logs", LOG_PATH)
 
 class NetworkClientsChecker:
     def __init__(self):
-        self.settings = ClientCheckerConfig(load_config_json(SETTINGS_FILE))
-        self.trusted_clients = load_config_json(TRUSTED_CLIENTS_FILE)
-        self.last_state = ClientsCheckerLastState()
-        self.mqtt_publisher = MQTTPublisher()
+        settings = ClientCheckerConfig(load_config_json(SETTINGS_FILE))
+
+        self.pool_interval: int = settings.pool_interval
+        self.meta: WbDeviceMeta = settings.meta
+
+        self.trusted_clients: JsonDict = load_config_json(TRUSTED_CLIENTS_FILE)
+        self.last_state: ClientsCheckerLastState = ClientsCheckerLastState()
+        self.mqtt_publisher: MQTTPublisher = MQTTPublisher()
+
+        self.mqtt_publisher.publish_meta(self.meta)
         self._send_status(1)
 
     def close(self):
@@ -33,47 +41,43 @@ class NetworkClientsChecker:
         self.mqtt_publisher.disconnect()
 
     def _send_status(self, status: int):
-        self.mqtt_publisher.publish(
-            self.settings.mqtt.device_name,
-            self.settings.mqtt.controls["status"],
-            status
-        )
+        self.mqtt_publisher.safe_publish(self.meta, "status", status)
 
     def get_client_connection_info(self, network_client: NetworkClient) -> ClientConnectionInfo:
-        client_last_state_list = [last for last in self.last_state.online if last.client.mac == network_client.mac]
+        client_last_state_list: list[ClientConnectionInfo] = (
+            [last for last in self.last_state.online if last.client.mac == network_client.mac]
+            if self.last_state.online else None
+        )
         if not client_last_state_list:
             return ClientConnectionInfo(network_client)
-        client_last_state = client_last_state_list[0]
-        if client_last_state.status == ClientStatus.PENDING:
-            return (ClientConnectionInfo(network_client)
-                    if network_client.active
-                    else ClientConnectionInfo(network_client, ClientStatus.OFFLINE))
-        return client_last_state
 
-    def check_clients_online_update(self, network_clients: list[ClientConnectionInfo]) -> set[ClientConnectionInfo]:
-        online_clients_info: set[ClientConnectionInfo] = set(
+        client_last_state: ClientConnectionInfo = client_last_state_list[0]
+
+        if client_last_state.status == ClientStatus.PENDING and not network_client.active:
+            return ClientConnectionInfo(network_client, ClientStatus.OFFLINE)
+
+        return ClientConnectionInfo(network_client)
+
+    def get_clients_online(self, network_clients: list[ClientConnectionInfo]) -> set[ClientConnectionInfo]:
+        online_clients: set[ClientConnectionInfo] = set(
             [info for info in network_clients if info and info.status != ClientStatus.OFFLINE]
         )
-        if len(self.last_state.online) != len(online_clients_info):
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["clientsOnlineCount"],
-                len(online_clients_info)
-            )
+        if self.last_state.online is None:
+            self.mqtt_publisher.safe_publish(self.meta, "clientsOnlineCount", str(len(online_clients)))
+            self._log_connections_changes(self.last_state.online, online_clients)
+            self.last_state.online = online_clients
+            return online_clients
 
-        if online_clients_info != self.last_state.online:
-            connected = online_clients_info - self.last_state.online
-            disconnected = self.last_state.online - online_clients_info
-            LOGGER.info(
-                f"New clients connected: {[str(info.client.name) for info in connected]}"
-            ) if connected else None
-            LOGGER.info(
-                f"Clients disconnected: {[str(info.client.name) for info in disconnected]}"
-            ) if disconnected else None
-        self.last_state.online = online_clients_info
-        return online_clients_info
+        if len(self.last_state.online) != len(online_clients):
+            self.mqtt_publisher.safe_publish(self.meta, "clientsOnlineCount", str(len(online_clients)))
 
-    def check_trusted_clients_online_update(self, online_clients: set[ClientConnectionInfo]):
+        if online_clients != self.last_state.online:
+            self._log_connections_changes(self.last_state.online, online_clients)
+
+        self.last_state.online = online_clients
+        return online_clients
+
+    def update_trusted_clients_online(self, online_clients: set[ClientConnectionInfo]):
         trusted_online_dict: dict[str: ClientConnectionInfo] = ({
             info.client.mac: info for info in online_clients
             if info.client.mac in self.trusted_clients.keys()
@@ -81,52 +85,58 @@ class NetworkClientsChecker:
         })
         if trusted_online_dict:
             for mac, info in trusted_online_dict.items():
-                trusted_client_name = self.trusted_clients.get(mac)["name"]
+                trusted_client_name: str = self.trusted_clients.get(mac)["name"]
                 info.client.name = trusted_client_name
 
         trusted_online: set[ClientConnectionInfo] = (
             set(trusted_online_dict.values())
-            if trusted_online_dict
-            else set()
+            if trusted_online_dict else set()
         )
 
-        if trusted_online != self.last_state.trusted_online:
-            connected = trusted_online - self.last_state.trusted_online
-            disconnected = self.last_state.trusted_online - trusted_online
-            LOGGER.info(
-                f"New trusted clients connected: {[info.client.name for info in connected]}"
-            ) if connected else None
-            LOGGER.info(
-                f"Trusted clients disconnected: {[info.client.name for info in disconnected]}"
-            ) if disconnected else None
-
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["trustedClientsOnline"],
-                str([info.client.name for info in trusted_online])
+        if self.last_state.trusted_online is None or trusted_online != self.last_state.trusted_online:
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "trustedClientsOnline",
+                ",".join([info.client.name for info in trusted_online]) if len(trusted_online) > 0 else " "
             )
+            self._log_connections_changes(self.last_state.trusted_online, trusted_online, "trusted")
 
         self.last_state.trusted_online = trusted_online
 
-    def check_unregistered_clients_online_update(self, online_clients: set[ClientConnectionInfo]):
+    def update_unregistered_clients_online(self, online_clients: set[ClientConnectionInfo]):
         unregistered_online: set[ClientConnectionInfo] = set([
             info for info in online_clients
             if info.status != ClientStatus.OFFLINE
                and info.client.registered is False
         ])
 
-        if unregistered_online != self.last_state.unregistered_online:
-            connected = unregistered_online - self.last_state.unregistered_online
-            disconnected = self.last_state.unregistered_online - unregistered_online
-            LOGGER.info(f"New clients connected: {[info.client.name for info in connected]}") if connected else None
-            LOGGER.info(
-                f"Clients disconnected: {[info.client.name for info in disconnected]}") if disconnected else None
-            self.mqtt_publisher.publish(
-                self.settings.mqtt.device_name,
-                self.settings.mqtt.controls["unregisteredClientsOnline"],
-                str([info.client.name for info in unregistered_online])
+        if self.last_state.unregistered_online is None or unregistered_online != self.last_state.unregistered_online:
+            self.mqtt_publisher.safe_publish(
+                self.meta,
+                "unregisteredClientsOnline",
+                ",".join([info.client.name for info in unregistered_online]) if len(unregistered_online) > 0 else " "
+            )
+            self._log_connections_changes(
+                self.last_state.unregistered_online, unregistered_online, "unregistered"
             )
         self.last_state.unregistered_online = unregistered_online
+
+    @staticmethod
+    def _log_connections_changes(
+            last_connections: set[ClientConnectionInfo] | None,
+            current_connections: set[ClientConnectionInfo] | None,
+            connections_list_title: str = ""
+    ):
+        current_connections: set = current_connections or set()
+        last_connections: set = last_connections or set()
+        connected: set[ClientConnectionInfo] = current_connections - last_connections
+        disconnected: set[ClientConnectionInfo] = last_connections - current_connections
+        LOGGER.info(
+            f"New {connections_list_title} clients connected: {[info.client.name for info in connected]}"
+        ) if connected else None
+        LOGGER.info(
+            f"Current {connections_list_title} clients disconnected: {[info.client.name for info in disconnected]}"
+        ) if disconnected else None
 
 
 if __name__ == '__main__':
@@ -136,7 +146,7 @@ if __name__ == '__main__':
     try:
         router = KeeneticRouter()
         clients_checker = NetworkClientsChecker()
-        pool_interval = clients_checker.settings.pool_interval
+        pool_interval = clients_checker.pool_interval
         LOGGER.info("Get started")
 
         while True:
@@ -150,9 +160,9 @@ if __name__ == '__main__':
                     LOGGER.warning("Info about router clients not received")
                     continue
 
-                online_clients: set[ClientConnectionInfo] = clients_checker.check_clients_online_update(network_clients)
-                clients_checker.check_trusted_clients_online_update(online_clients)
-                clients_checker.check_unregistered_clients_online_update(online_clients)
+                clients_online: set[ClientConnectionInfo] = clients_checker.get_clients_online(network_clients)
+                clients_checker.update_trusted_clients_online(clients_online)
+                clients_checker.update_unregistered_clients_online(clients_online)
                 time.sleep(pool_interval)
             except Exception:
                 LOGGER.error("Handle clients receiving error", exc_info=True)
