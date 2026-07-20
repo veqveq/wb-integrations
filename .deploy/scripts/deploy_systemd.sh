@@ -45,11 +45,34 @@ User=${REMOTE_USER}
 WantedBy=multi-user.target
 EOF
 
+
+cat > /etc/systemd/system/${CAMERA_LIGHT_SENSOR_SERVICE} <<EOF
+[Unit]
+Description=Camera light sensor service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${PROJECT_DIR}
+Environment=\"PYTHONPATH=${PROJECT_DIR}\"
+Environment=\"PROJECT_BASE_PATH=${PROJECT_DIR}\"
+Environment="CONFIG_DIR=/etc/wb-integrations"
+ExecStart=${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/${CAMERA_LIGHT_SENSOR_ENTRY}
+Restart=always
+RestartSec=3
+User=${REMOTE_USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
 
 systemctl enable ${CAMERA_ALARM_SERVICE}
 systemctl enable ${NETWORK_CLIENTS_SERVICE}
+systemctl enable ${CAMERA_LIGHT_SENSOR_SERVICE}
 
 systemctl restart ${CAMERA_ALARM_SERVICE}
 systemctl restart ${NETWORK_CLIENTS_SERVICE}
+systemctl restart ${CAMERA_LIGHT_SENSOR_SERVICE}
 "

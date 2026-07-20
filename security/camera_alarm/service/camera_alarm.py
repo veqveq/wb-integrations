@@ -54,6 +54,7 @@ class HikvisionCameraAlarmService:
                     await asyncio.sleep(self.reconnected_delay)
         finally:
             await self.camera.close()
+            self.mqtt.safe_publish(self.camera.meta, "streamConnected", 0)
             self.mqtt.disconnect()
 
     def _handle_alarm_event(self, event: HikvisionCameraEvent):

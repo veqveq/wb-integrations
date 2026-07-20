@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterable
 from logging import Logger
 from typing import AsyncIterator
+import datetime
 
 import xmltodict
 from httpx import AsyncClient, DigestAuth, Response
@@ -56,14 +57,15 @@ class HikvisionCamera:
         await self.session.aclose()
         self.logger.info("Connection closed...")
 
-    async def _connect_to_api(self, resource_path: str) -> AsyncIterator[Response]:
-        async with self.session.stream("GET", resource_path) as connection:
-            try:
-                connection.raise_for_status()
-                self.logger.info(f'Connected to {resource_path}')
-                return connection
-            except Exception:
-                self.logger.error(f'Connection error. Path: {resource_path}', exc_info=True)
+    async def get_snapshot(self) -> bytes:
+        response: Response = await self.session.get(self.endpoints["getSnapshot"])
+        response.raise_for_status()
+        self.logger.debug(
+            f"Get snapshot from {self.name} "
+            f"at {datetime.datetime.now()}. "
+            f"Size: {round(len(response.content) / 1024, 0)} kB"
+        )
+        return response.content
 
     def _process_xml(self, xml: str) -> HikvisionCameraEvent:
         try:
