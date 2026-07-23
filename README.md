@@ -3,6 +3,7 @@
 ## Список сервисов
 - чтение событий обнаружения движений с камер Hikvision (`camera_alarm`)
 - получение клиентов локальной сети с роутера Keenetic (`network_clients_checker`)
+- определение уровня освещения с камер Hikvision (`camera_light_sensor`)
 
 ## [Деплой](./.deploy/README.md)
 
@@ -24,4 +25,5 @@
   - логи MQTT `nano /mnt/data/wb-integrations/mqtt/logs/logs.log`
   - логи camera_alarm `nano /mnt/data/wb-integrations/security/camera_alarm/logs/logs.log`
   - логи network_clients_checker `nano /mnt/data/wb-integrations/security/network_clients_checker/logs/logs.log`
+  - логи camera_light_sensor `nano /mnt/data/wb-integrations/sensor/camera_light_sensor/logs/logs.log`
 
