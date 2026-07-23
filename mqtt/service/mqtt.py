@@ -17,14 +17,6 @@ LOGGER = configure_logger("logs", LOG_PATH)
 
 
 class MQTTPublisher:
-    instance = None
-
-    @staticmethod
-    def get_instance():
-        if MQTTPublisher.instance is None:
-            MQTTPublisher.instance = MQTTPublisher()
-        return MQTTPublisher.instance
-
     def __init__(self):
         try:
             config: MQTTConfig = MQTTConfig(load_config_json(SETTINGS_FILE))

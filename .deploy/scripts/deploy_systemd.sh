@@ -20,6 +20,8 @@ ExecStart=${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/${CAMERA_ALARM_ENTRY}
 Restart=always
 RestartSec=3
 User=${REMOTE_USER}
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
@@ -40,6 +42,8 @@ ExecStart=${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/${NETWORK_CLIENTS_ENTRY
 Restart=always
 RestartSec=3
 User=${REMOTE_USER}
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
@@ -61,6 +65,8 @@ ExecStart=${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/${CAMERA_LIGHT_SENSOR_E
 Restart=always
 RestartSec=3
 User=${REMOTE_USER}
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
