@@ -1,10 +1,13 @@
 import asyncio
+from datetime import datetime
 
-from cv2 import imdecode, IMREAD_COLOR, cvtColor, COLOR_BGR2HSV
-from numpy import frombuffer, ndarray, uint8, median, percentile, count_nonzero, std
+from cv2 import imdecode, IMREAD_COLOR, cvtColor, COLOR_BGR2HSV, GaussianBlur
+from numpy import frombuffer, ndarray, uint8, median, percentile, std, float32, mean, clip
 
 from common.config import get_service_and_config_paths, load_config_json, get_config_path
 from common.logger import configure_logger
+from common.service import DebianService
+from common.utils import CsvWriter
 from hikvision.camera.dto.dto import HikvisionCameraConfig
 from hikvision.camera.service.camera import HikvisionCamera
 from mqtt.service.mqtt import MQTTPublisher
@@ -19,23 +22,28 @@ CAMERAS_FILE = get_config_path("security/camera_alarm") / "cameras.json"
 LOGGER = configure_logger("logs", LOG_PATH)
 
 
-class CameraLightSensor:
-    components_weight: dict[str, float] = {
-        "median": 0.40,
-        "percentile5": 0.20,
-        "middle": 0.15,
-        "dark_pixels_percent": 0.10,
-        "standard_deviation": 0.10,
-        "bright_pixels_percent": 0.05
-    }
-
+class CameraLightSensor(DebianService):
     def __init__(self, camera_config: HikvisionCameraConfig):
+        super().__init__()
+        self.cols = 5
+        self.rows = 5
         settings = CameraLightSensorSettings(load_config_json(SETTINGS_FILE))
-        self.pool_interval = settings.pool_interval
-        self.camera = HikvisionCamera(camera_config)
-        self.mqtt = MQTTPublisher()
+        self.pool_interval: int = settings.pool_interval
+        self.log_interval: int = settings.log_interval
+        self.camera: HikvisionCamera = HikvisionCamera(camera_config)
+        self.mqtt: MQTTPublisher = MQTTPublisher()
         self.mqtt.safe_publish(self.camera.meta, "lightSensorConnected", 1)
-        self.light_level_avg = None
+        self.csv_writer: CsvWriter = CsvWriter(
+            self.camera.meta.deviceName, LOG_PATH / f"research/", self._build_csv_header()
+        )
+        self.last_research_logged: datetime | None = None
+
+    def _build_csv_header(self) -> list[str]:
+        column_names: list = ["time"]
+        for row in range(self.rows):
+            for col in range(self.cols):
+                column_names.append(f'{row + 1}-{col + 1}')
+        return column_names
 
     async def close(self):
         await self.camera.close()
@@ -49,46 +57,98 @@ class CameraLightSensor:
             snapshot_array: ndarray = frombuffer(snapshot_bytes, dtype=uint8)
             snapshot: ndarray = imdecode(snapshot_array, IMREAD_COLOR)
             hsv: ndarray = cvtColor(snapshot, COLOR_BGR2HSV)
-            light_sensor_data: LightSensorData = self._calculate_light_sensor_data(hsv)
-            light_level = round(sum([fld_value * self.components_weight[fld_name]
-                                     for fld_name, fld_value in vars(light_sensor_data).items()
-                                     if fld_name in self.components_weight
-                                     ]), 2)
-            if self.light_level_avg is None:
-                self.light_level_avg = light_level
-            self.light_level_avg = round(0.8 * self.light_level_avg + 0.2 * light_level, 0)
-            self.mqtt.safe_publish(self.camera.meta, "lightLevel", self.light_level_avg)
-            LOGGER.debug(f'{self.camera.name}: {self.light_level_avg}')
+            value_channel = hsv[:, :, 2].astype(float32)
+            light_sensor_data: LightSensorData = self._calculate_light_sensor_data(value_channel)
+            self.mqtt.safe_publish(self.camera.meta, "lightLevel", light_sensor_data.light_level)
+            # Ресерч
+            # self._calculate_light_level_by_grid(value_channel)
         except Exception:
             LOGGER.error(f'Calculate lighting level error. Camera: {self.camera.name}', exc_info=True)
             return None
         finally:
             await asyncio.sleep(self.pool_interval)
 
-    @staticmethod
-    def _calculate_light_sensor_data(hsv: ndarray) -> LightSensorData:
-        value_channel = hsv[:, :, 2]
-        p5 = percentile(value_channel, 5)
-        p95 = percentile(value_channel, 95)
-        dark_pixels = count_nonzero(value_channel < p5)
-        bright_pixels = count_nonzero(value_channel > p95)
-        total_pixels = count_nonzero(value_channel)
+    def _log_calculation_result(self, data: list):
+        if self.last_research_logged is None:
+            self.csv_writer.write_row(data)
+            self.last_research_logged = datetime.now()
+            return
+        diff_sec = (datetime.now() - self.last_research_logged).total_seconds()
+        if diff_sec > self.log_interval:
+            self.csv_writer.write_row(data)
+            self.last_research_logged = datetime.now()
 
+    @staticmethod
+    def _calculate_light_sensor_data(value_channel: ndarray) -> LightSensorData:
+        value_channel = value_channel[value_channel < 220]
+
+        p5 = float(percentile(value_channel, 5))
+        p95 = float(percentile(value_channel, 95))
+        m = float(median(value_channel))
+        dark_percent = float(mean(value_channel < 30) * 100)
+        bright_percent = float(mean(value_channel > 240) * 100)
+        standard_deviation = float(std(value_channel))
+
+        local_mean = GaussianBlur(value_channel, (0, 0), sigmaX=35, sigmaY=35)
+        lavg = float(mean(local_mean))
+
+        contrast = (p95 - p5) / 255.0
+        contrast = clip(contrast, 0.0, 1.0)
+
+        alpha = 0.25 + 0.35 * contrast
+        alpha = clip(alpha, 0.25, 0.60)
+
+        brightness = (1.0 - alpha) * m + alpha * lavg
+        shadow_factor = 1.0 - dark_percent / 100.0
+        shadow_factor = clip(shadow_factor, 0.70, 1.00)
+        brightness *= shadow_factor
+
+        light = (brightness - 30.0) / (120.0 - 30.0)
+        light = clip(light, 0.0, 1.0)
+        light = round(light * 100.0, 0)
         return LightSensorData(
-            middle=value_channel.mean(),
-            median=median(value_channel[(value_channel > p5) & (value_channel < p95)]),
+            middle=lavg,
+            median=m,
             percentile5=p5,
-            dark_pixels_percent=(1 - dark_pixels / total_pixels) * 100,
-            bright_pixels_percent=bright_pixels / total_pixels * 100,
-            standard_deviation=100 - std(value_channel)
+            percentile95=p95,
+            dark_pixels_percent=dark_percent,
+            bright_pixels_percent=bright_percent,
+            standard_deviation=standard_deviation,
+            light_level=light
         )
+
+    def _calculate_light_level_by_grid(self, hsv: ndarray):
+        grid: list[list] = self._split_to_grid(hsv)
+        levels: list = [datetime.now().strftime("%d-%m-%Y %H:%M")]
+        for row in range(self.rows):
+            for col in range(self.cols):
+                hsv: ndarray = grid[row][col]
+                light_sensor_data: LightSensorData = self._calculate_light_sensor_data(hsv)
+                levels.append(str(light_sensor_data.light_level))
+        self._log_calculation_result(levels)
+
+    def _split_to_grid(self, value_channel: ndarray):
+        height, width = value_channel.shape
+        cell_height = height // self.rows
+        cell_widht = width // self.cols
+        rows: list = []
+        for row in range(self.rows):
+            cols: list = []
+            for col in range(self.cols):
+                y1 = row * cell_height
+                y2 = (row + 1) * cell_height if row != self.rows - 1 else height
+                x1 = col * cell_widht
+                x2 = (col + 1) * cell_widht if col != self.cols - 1 else width
+                cols.append(value_channel[y1:y2, x1:x2].ravel())
+            rows.append(cols)
+        return rows
 
 
 async def main():
     camera_configs = [HikvisionCameraConfig(config) for config in load_config_json(CAMERAS_FILE)]
     services = [CameraLightSensor(config) for config in camera_configs]
     try:
-        while True:
+        while CameraLightSensor.is_running():
             try:
                 tasks = [service.calculate_lighting_level() for service in services]
                 await asyncio.gather(*tasks)

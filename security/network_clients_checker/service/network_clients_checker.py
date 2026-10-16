@@ -2,6 +2,7 @@ import time
 
 from common.config import load_config_json, get_service_and_config_paths
 from common.logger import configure_logger
+from common.service import DebianService
 from common.utils import JsonDict
 from common.wirenboard import WbDeviceMeta
 from keenetic.dto.dto import ClientStatus
@@ -22,8 +23,9 @@ TRUSTED_CLIENTS_FILE = CONFIG_PATH / "trusted_network_clients.json"
 LOGGER = configure_logger("logs", LOG_PATH)
 
 
-class NetworkClientsChecker:
+class NetworkClientsChecker(DebianService):
     def __init__(self):
+        super().__init__()
         settings = ClientCheckerConfig(load_config_json(SETTINGS_FILE))
 
         self.pool_interval: int = settings.pool_interval
@@ -149,7 +151,7 @@ if __name__ == '__main__':
         pool_interval = clients_checker.pool_interval
         LOGGER.info("Get started")
 
-        while True:
+        while clients_checker.is_running():
             try:
                 network_clients: list[ClientConnectionInfo] = [
                     clients_checker.get_client_connection_info(client) for client in router.get_clients()

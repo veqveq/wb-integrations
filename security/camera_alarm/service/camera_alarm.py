@@ -4,6 +4,7 @@ from pathlib import Path
 from common.config import get_service_and_config_paths
 from common.config import load_config_json
 from common.logger import configure_logger
+from common.service import DebianService
 from hikvision.camera.dto.dto import HikvisionCameraConfig, HikvisionCameraEvent
 from hikvision.camera.service.camera import HikvisionCamera
 from mqtt.service.mqtt import MQTTPublisher
@@ -18,8 +19,9 @@ CAMERAS_FILE: Path = CONFIG_PATH / "cameras.json"
 LOGGER = configure_logger("logs", LOG_PATH)
 
 
-class HikvisionCameraAlarmService:
+class HikvisionCameraAlarmService(DebianService):
     def __init__(self, camera_config: HikvisionCameraConfig):
+        super().__init__()
         settings: CameraAlarmSettings = CameraAlarmSettings(load_config_json(SETTINGS_FILE))
 
         self.camera: HikvisionCamera = HikvisionCamera(camera_config)
@@ -34,7 +36,7 @@ class HikvisionCameraAlarmService:
 
     async def handle_alarm_events(self):
         try:
-            while True:
+            while self.is_running():
                 try:
                     self.mqtt.safe_publish(self.camera.meta, "streamConnected", 1)
                     LOGGER.info(f'Camera "{self.camera.name}". Listen alarm events started...')
